@@ -10,12 +10,14 @@ import {
   Plug,
   Sparkles,
   Network,
+  Share2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV = [
   { href: '/', label: 'Home', icon: Home, match: (p: string) => p === '/' },
   { href: '/today', label: 'Today', icon: Inbox, match: (p: string) => p.startsWith('/today') },
+  { href: '/network', label: 'Network', icon: Share2, match: (p: string) => p.startsWith('/network') },
   { href: '/graph', label: 'Ask the graph', icon: Network, match: (p: string) => p.startsWith('/graph') },
   { href: '/connections', label: 'Connections', icon: Plug, match: (p: string) => p.startsWith('/connections') },
   { href: '/activity', label: 'Activity', icon: Activity, match: (p: string) => p.startsWith('/activity') },

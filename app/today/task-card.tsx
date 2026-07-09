@@ -68,6 +68,15 @@ export function TaskCard({
                 {task.subtask_count} subtasks
               </span>
             )}
+            {task.shared_count > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300"
+                title={`Shares people or projects with ${task.shared_count} other open task${task.shared_count === 1 ? '' : 's'}`}
+              >
+                <span className="size-1 rounded-full bg-emerald-400" />
+                connects to {task.shared_count}
+              </span>
+            )}
           </div>
         </div>
 

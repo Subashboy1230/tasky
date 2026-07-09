@@ -13,9 +13,17 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  Users,
+  FolderKanban,
+  Video,
+  Layers,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 type TagFilter = 'all' | 'reply' | 'action' | 'commit' | 'fyi'
+type GroupBy = 'none' | 'person' | 'project' | 'meeting'
 
 type RunState =
   | { status: 'idle' }
@@ -23,26 +31,44 @@ type RunState =
   | { status: 'ok'; result: any }
   | { status: 'error'; error: string }
 
+interface Group {
+  key: string
+  label: string
+  icon: 'person' | 'project' | 'meeting'
+  tasks: TaskRow[]
+  urgent_count: number
+}
+
 export function TodayView({ tasks }: { tasks: TaskRow[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [tagFilter, setTagFilter] = useState<TagFilter>('all')
+  const [groupBy, setGroupBy] = useState<GroupBy>('none')
   const [runState, setRunState] = useState<RunState>({ status: 'idle' })
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   const filtered = useMemo(() => {
     return tasks.filter(t => {
       if (tagFilter !== 'all' && t.tag !== tagFilter) return false
       if (query.trim()) {
         const q = query.toLowerCase()
-        if (!t.title.toLowerCase().includes(q) &&
-            !(t.subtitle ?? '').toLowerCase().includes(q) &&
-            !t.mentioned.some(m => (m ?? '').toLowerCase().includes(q))) return false
+        if (
+          !t.title.toLowerCase().includes(q) &&
+          !(t.subtitle ?? '').toLowerCase().includes(q) &&
+          !t.mentioned.some(m => (m ?? '').toLowerCase().includes(q))
+        )
+          return false
       }
       return true
     })
   }, [tasks, query, tagFilter])
+
+  const groups = useMemo(
+    () => (groupBy === 'none' ? [] : buildGroups(filtered, groupBy)),
+    [filtered, groupBy],
+  )
 
   const selected = tasks.find(t => t.id === selectedId) ?? null
   const counts = useMemo(() => tally(tasks), [tasks])
@@ -58,18 +84,25 @@ export function TodayView({ tasks }: { tasks: TaskRow[] }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Run failed')
       setRunState({ status: 'ok', result: data })
-      // Re-fetch the server-side task list so new tasks appear immediately.
       startTransition(() => router.refresh())
     } catch (err: any) {
       setRunState({ status: 'error', error: err.message ?? String(err) })
     }
   }
 
+  function toggleGroup(key: string) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const running = runState.status === 'running' || isPending
 
   return (
     <div className="mx-auto max-w-[1120px] px-8 py-6 space-y-5">
-      {/* Header */}
       <header className="flex items-start justify-between gap-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
@@ -91,11 +124,9 @@ export function TodayView({ tasks }: { tasks: TaskRow[] }) {
         </button>
       </header>
 
-      {/* Run status banner (only when there's a result to show) */}
       {runState.status === 'ok' && <RunBanner result={runState.result} />}
       {runState.status === 'error' && <RunErrorBanner error={runState.error} />}
 
-      {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-2.5">
         <div className="relative flex-1 min-w-[220px]">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
@@ -107,18 +138,28 @@ export function TodayView({ tasks }: { tasks: TaskRow[] }) {
           />
         </div>
         <div className="flex items-center gap-1 rounded-md border border-line bg-canvas p-0.5">
-          <FilterChip active={tagFilter === 'all'} onClick={() => setTagFilter('all')} label="All" count={tasks.length} />
+          <FilterChip
+            active={tagFilter === 'all'}
+            onClick={() => setTagFilter('all')}
+            label="All"
+            count={tasks.length}
+          />
           <FilterChip active={tagFilter === 'reply'} onClick={() => setTagFilter('reply')} label="Reply" count={counts.reply} />
           <FilterChip active={tagFilter === 'action'} onClick={() => setTagFilter('action')} label="Action" count={counts.action} />
           <FilterChip active={tagFilter === 'commit'} onClick={() => setTagFilter('commit')} label="Commit" count={counts.commit} />
           <FilterChip active={tagFilter === 'fyi'} onClick={() => setTagFilter('fyi')} label="FYI" count={counts.fyi} />
         </div>
+        <div className="flex items-center gap-1 rounded-md border border-line bg-canvas p-0.5" title="Group tasks by their graph neighbors">
+          <GroupChip active={groupBy === 'none'} onClick={() => setGroupBy('none')} icon={Layers} label="Flat" />
+          <GroupChip active={groupBy === 'person'} onClick={() => setGroupBy('person')} icon={Users} label="Person" />
+          <GroupChip active={groupBy === 'project'} onClick={() => setGroupBy('project')} icon={FolderKanban} label="Project" />
+          <GroupChip active={groupBy === 'meeting'} onClick={() => setGroupBy('meeting')} icon={Video} label="Meeting" />
+        </div>
       </div>
 
-      {/* Task list */}
       {filtered.length === 0 ? (
         <EmptyState hasTasks={tasks.length > 0} onRun={runDigest} running={running} />
-      ) : (
+      ) : groupBy === 'none' ? (
         <div className="space-y-2">
           {filtered.map(task => (
             <TaskCard
@@ -129,15 +170,111 @@ export function TodayView({ tasks }: { tasks: TaskRow[] }) {
             />
           ))}
         </div>
+      ) : (
+        <div className="space-y-4">
+          {groups.map(group => {
+            const collapsed = collapsedGroups.has(group.key)
+            const Icon =
+              group.icon === 'person' ? Users : group.icon === 'project' ? FolderKanban : Video
+            return (
+              <div key={group.key} className="space-y-2">
+                <button
+                  onClick={() => toggleGroup(group.key)}
+                  className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-surface"
+                >
+                  {collapsed ? (
+                    <ChevronRight size={13} className="text-ink-faint" />
+                  ) : (
+                    <ChevronDown size={13} className="text-ink-faint" />
+                  )}
+                  <Icon size={13} className="text-ink-muted" />
+                  <span className="text-sm font-medium">{group.label}</span>
+                  <span className="text-[11px] text-ink-faint">{group.tasks.length}</span>
+                  {group.urgent_count > 0 && (
+                    <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">
+                      {group.urgent_count} urgent
+                    </span>
+                  )}
+                </button>
+                {!collapsed && (
+                  <div className="space-y-2 pl-6">
+                    {group.tasks.map(task => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        isActive={task.id === selectedId}
+                        onClick={() => setSelectedId(task.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
 
-      {/* Right-side detail panel */}
-      {selected && (
-        <TaskDetailSheet task={selected} onClose={() => setSelectedId(null)} />
-      )}
+      {selected && <TaskDetailSheet task={selected} onClose={() => setSelectedId(null)} />}
     </div>
   )
 }
+
+// ─── group-by logic ───────────────────────────────────────────────
+
+function buildGroups(tasks: TaskRow[], groupBy: GroupBy): Group[] {
+  const map = new Map<string, Group>()
+
+  const push = (key: string, label: string, icon: Group['icon'], task: TaskRow) => {
+    const existing = map.get(key)
+    if (existing) {
+      existing.tasks.push(task)
+      if (task.urgent) existing.urgent_count++
+    } else {
+      map.set(key, {
+        key,
+        label,
+        icon,
+        tasks: [task],
+        urgent_count: task.urgent ? 1 : 0,
+      })
+    }
+  }
+
+  for (const task of tasks) {
+    if (groupBy === 'person') {
+      const people = task.mentioned.filter(Boolean)
+      if (people.length === 0) {
+        push('__unattributed', 'Unattributed', 'person', task)
+      } else {
+        for (const person of people) push(`p:${person}`, person, 'person', task)
+      }
+    } else if (groupBy === 'project') {
+      const projects = task.projects.filter(Boolean)
+      if (projects.length === 0) {
+        push('__no_project', 'No project', 'project', task)
+      } else {
+        for (const project of projects) push(`pj:${project}`, project, 'project', task)
+      }
+    } else if (groupBy === 'meeting') {
+      const context = task.parent_context ?? '__no_meeting'
+      push(
+        `m:${context}`,
+        task.parent_context ?? 'No meeting linked',
+        'meeting',
+        task,
+      )
+    }
+  }
+
+  // Sort by task_count desc, then urgent_count desc, tie-break by label.
+  return Array.from(map.values()).sort((a, b) => {
+    if (b.tasks.length !== a.tasks.length) return b.tasks.length - a.tasks.length
+    if (b.urgent_count !== a.urgent_count) return b.urgent_count - a.urgent_count
+    return a.label.localeCompare(b.label)
+  })
+}
+
+// ─── small components ────────────────────────────────────────────
 
 function EmptyState({
   hasTasks,
@@ -198,7 +335,11 @@ function RunBanner({ result }: { result: any }) {
             </span>
           ))}
           {errorKeys.map(k => (
-            <span key={k} className="rounded bg-red-500/10 px-1.5 py-0.5 text-red-300" title={errors[k]}>
+            <span
+              key={k}
+              className="rounded bg-red-500/10 px-1.5 py-0.5 text-red-300"
+              title={errors[k]}
+            >
               {k} skipped
             </span>
           ))}
@@ -247,12 +388,38 @@ function FilterChip({
   return (
     <button
       onClick={onClick}
-      className={`rounded px-2 py-1 text-xs ${
-        active ? 'bg-surface text-ink' : 'text-ink-muted hover:text-ink'
-      }`}
+      className={cn(
+        'rounded px-2 py-1 text-xs',
+        active ? 'bg-surface text-ink' : 'text-ink-muted hover:text-ink',
+      )}
     >
       {label}
       <span className="ml-1 text-ink-faint">{count}</span>
+    </button>
+  )
+}
+
+function GroupChip({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: typeof Users
+  label: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-2 py-1 text-xs',
+        active ? 'bg-surface text-ink' : 'text-ink-muted hover:text-ink',
+      )}
+    >
+      <Icon size={11} />
+      {label}
     </button>
   )
 }

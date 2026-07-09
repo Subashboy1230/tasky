@@ -3,7 +3,13 @@
 // Import this everywhere that touches the graph. Do not create new
 // Driver instances in each module: driver holds a connection pool.
 
-import neo4j, { Driver, Session, isInt } from 'neo4j-driver'
+import neo4j, {
+  Driver,
+  Session,
+  isInt,
+  Record as Neo4jRecord,
+  ManagedTransaction,
+} from 'neo4j-driver'
 
 let _driver: Driver | null = null
 
@@ -53,7 +59,7 @@ function getDriver(): Driver {
 export async function runCypher<T>(
   cypher: string,
   params: Record<string, unknown> = {},
-  map: (record: neo4j.Record) => T = (r) => normalizeNeo4jValue(r.toObject()) as T,
+  map: (record: Neo4jRecord) => T = (r) => normalizeNeo4jValue(r.toObject()) as T,
 ): Promise<T[]> {
   const driver = getDriver()
   const session: Session = driver.session()
@@ -70,7 +76,7 @@ export async function runCypher<T>(
  * requires several MERGE + MATCH + SET statements to stay consistent.
  */
 export async function runTx<T>(
-  work: (tx: neo4j.ManagedTransaction) => Promise<T>,
+  work: (tx: ManagedTransaction) => Promise<T>,
   mode: 'read' | 'write' = 'write',
 ): Promise<T> {
   const driver = getDriver()

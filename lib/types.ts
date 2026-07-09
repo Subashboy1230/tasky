@@ -44,4 +44,6 @@ export interface TaskRow {
   mentioned: string[]
   projects: string[]
   subtask_count: number
+  /** # of other open tasks that share at least one Person or Project. */
+  shared_count: number
 }

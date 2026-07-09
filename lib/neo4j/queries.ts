@@ -163,12 +163,16 @@ export const LIST_OPEN_TASKS = `
 MATCH (t:Task {status: 'open'})
 WHERE NOT (t)-[:SUBTASK_OF]->(:Task)
   AND (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+// Count neighbors: other open tasks that share a Person or Project with this one.
+CALL {
+  WITH t
+  OPTIONAL MATCH (t)-[:MENTIONS|ABOUT]->(shared)<-[:MENTIONS|ABOUT]-(other:Task {status: 'open'})
+  WHERE other.id <> t.id
+  RETURN count(DISTINCT other) AS shared_count
+}
 OPTIONAL MATCH (t)-[:MENTIONS]->(p:Person)
 OPTIONAL MATCH (t)-[:ABOUT]->(proj:Project)
 OPTIONAL MATCH (sub:Task)-[:SUBTASK_OF]->(t) WHERE sub.status = 'open'
-// Return the raw columns first, then order on the aliased ones. After an
-// aggregation (collect / count), Cypher will not let ORDER BY reach back
-// through 't' — but ordering by aliases returned in this projection is fine.
 RETURN t.id AS id,
        t.title AS title,
        t.subtitle AS subtitle,
@@ -180,8 +184,47 @@ RETURN t.id AS id,
        t.parent_context AS parent_context,
        collect(DISTINCT p.name) AS mentioned,
        collect(DISTINCT proj.name) AS projects,
-       count(DISTINCT sub) AS subtask_count
+       count(DISTINCT sub) AS subtask_count,
+       shared_count
 ORDER BY urgent DESC, due_at ASC, updated_at DESC
+`
+
+// ─── /network — people and projects the user has open work with ──
+
+export const NETWORK_PEOPLE = `
+MATCH (t:Task {status: 'open'})-[:MENTIONS]->(p:Person)
+WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+  AND NOT p.is_user = true
+RETURN p.name AS name,
+       p.email AS email,
+       count(DISTINCT t) AS task_count,
+       sum(CASE WHEN t.urgent = true THEN 1 ELSE 0 END) AS urgent_count,
+       collect(DISTINCT { id: t.id, title: t.title, tag: t.tag, urgent: t.urgent })[..3] AS preview
+ORDER BY task_count DESC, urgent_count DESC
+LIMIT 40
+`
+
+export const NETWORK_PROJECTS = `
+MATCH (t:Task {status: 'open'})-[:ABOUT]->(p:Project)
+WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+RETURN p.name AS name,
+       count(DISTINCT t) AS task_count,
+       sum(CASE WHEN t.urgent = true THEN 1 ELSE 0 END) AS urgent_count,
+       collect(DISTINCT { id: t.id, title: t.title, tag: t.tag, urgent: t.urgent })[..3] AS preview
+ORDER BY task_count DESC, urgent_count DESC
+LIMIT 40
+`
+
+export const NETWORK_MEETINGS = `
+MATCH (t:Task {status: 'open'})-[:COMMITTED_IN]->(m:Meeting)
+WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+RETURN m.title AS name,
+       m.granola_meeting_id AS ref,
+       count(DISTINCT t) AS task_count,
+       sum(CASE WHEN t.urgent = true THEN 1 ELSE 0 END) AS urgent_count,
+       collect(DISTINCT { id: t.id, title: t.title, tag: t.tag, urgent: t.urgent })[..3] AS preview
+ORDER BY task_count DESC
+LIMIT 20
 `
 
 // ─── Task detail — pull the 1-hop context around one task ──────

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         draft_confidence: c.draft_confidence ?? null,
         sub_items: (c.sub_items ?? []).map(s => s.title),
       })) as Array<Record<string, unknown>>,
-      graphContext: graphContext as Array<Record<string, unknown>>,
+      graphContext: graphContext as unknown as Array<Record<string, unknown>>,
       clearedContext: clearedContext as unknown as Array<Record<string, unknown>>,
       userId,
     })

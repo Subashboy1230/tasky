@@ -54,7 +54,7 @@ async function extractOneThread(args: {
       userId,
       payload: thread,
     })
-    return (result.candidates ?? []) as ExtractedItem[]
+    return (result.candidates ?? []) as unknown as ExtractedItem[]
   }
 
   // Permissive mode drops the "must have previously participated" gate and
