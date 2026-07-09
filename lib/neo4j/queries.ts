@@ -192,18 +192,20 @@ ORDER BY urgent DESC, due_at ASC, updated_at DESC
 
 // ─── Post-judge cluster pass ─────────────────────────────────────
 //
-// For each Project (or Meeting) that has 3+ open top-level tasks
+// For each Project (or Meeting) that has 2+ open top-level tasks
 // owned by the user, elect an anchor (highest-tag priority commit >
 // action > reply > fyi, then most recently seen) and demote the rest
 // to SUBTASK_OF that anchor. This is the graph doing the roll-up the
 // judge misses when related candidates land in different chunks.
+// Threshold is 2 (not 3) so pairs like "Dallas conference: book flight"
+// + "Dallas conference: prep talk" collapse into one row on /today.
 
 export const CLUSTER_PROJECT_TASKS = `
 MATCH (p:Project)<-[:ABOUT]-(t:Task {status: 'open'})
 WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
   AND NOT (t)-[:SUBTASK_OF]->(:Task)
 WITH p, collect(t) AS tasks
-WHERE size(tasks) >= 3
+WHERE size(tasks) >= 2
 
 // Rank each task by (tag priority desc, updated_at desc) so the anchor
 // is deterministic. commit > action > reply > fyi.
@@ -236,7 +238,7 @@ WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
   AND NOT (t)-[:SUBTASK_OF]->(:Task)
   AND NOT (t)-[:ABOUT]->(:Project)     // don't double-nest if project cluster already handled it
 WITH m, collect(t) AS tasks
-WHERE size(tasks) >= 3
+WHERE size(tasks) >= 2
 
 UNWIND tasks AS t
 WITH m, tasks, t,
