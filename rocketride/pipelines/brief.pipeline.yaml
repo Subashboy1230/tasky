@@ -1,0 +1,62 @@
+# RocketRide pipeline: brief
+#
+# Strategic pre-meeting / pre-task brief. Takes a subgraph (task or
+# meeting + surrounding people, projects, prior threads) and returns
+# a why / know / done / next / talking_points bundle.
+#
+# Called from lib/rocketride/client.ts::brief().
+# Set ROCKETRIDE_PIPELINE_BRIEF to the deployed pipeline id.
+#
+# System prompt is loaded from ../lib/prompts/brief.ts in the local
+# fallback; re-materialize it here after your first `rocketride deploy`
+# if you want RocketRide-hosted evals to work over the same text.
+
+id: tasky-brief
+name: Tasky · Brief
+description: >
+  Strategic guidance for a specific task or upcoming meeting, using a
+  Neo4j-derived subgraph of nearby people, projects, and prior threads.
+
+runtime:
+  provider: anthropic
+  model: claude-haiku-4-5
+  max_tokens: 2000
+  temperature: 0.2
+
+input_schema:
+  type: object
+  properties:
+    taskId: { type: string }
+    meetingId: { type: string }
+    subgraph:
+      type: object
+      description: >
+        Neo4j subgraph — nodes (Task, Person, Project, Meeting) and edges
+        rendered as JSON. Populated by lib/graph/subgraph-for-brief.ts.
+
+output_schema:
+  type: object
+  required: [why, know, done, next]
+  properties:
+    why: { type: string, description: One-sentence answer to "why does this matter now" }
+    know:
+      type: array
+      items: { type: string }
+      description: 3-5 short bullets of context the user needs.
+    done: { type: string, description: One sentence — what "done" looks like. }
+    next: { type: string, description: The single next move. }
+    talking_points:
+      type: array
+      items: { type: string }
+      description: Optional. Only for meeting briefs.
+
+prompts:
+  system: !file ./prompts/brief.system.md
+
+response:
+  format: strict_json
+  extract: choose_first_object
+  retry_on_parse_error: 1
+
+observability:
+  trace: true

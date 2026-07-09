@@ -1,0 +1,73 @@
+# RocketRide pipeline: extract.gmail
+#
+# Turns a normalized Gmail thread payload into candidate ExtractedItems
+# for the judge to review. Called from lib/rocketride/client.ts::extract()
+# with source: "gmail". Set ROCKETRIDE_PIPELINE_EXTRACT to the deployed id.
+
+id: tasky-extract-gmail
+name: Tasky · Extract · Gmail
+description: >
+  First-pass action-item extraction from a Gmail thread. Emits candidates
+  the graph-aware judge will then keep/drop/merge/subtask.
+
+runtime:
+  provider: anthropic
+  model: claude-haiku-4-5
+  max_tokens: 2000
+  temperature: 0
+
+input_schema:
+  type: object
+  required: [source, userEmail, userId, payload]
+  properties:
+    source: { type: string, enum: [gmail] }
+    userEmail: { type: string }
+    userId: { type: string }
+    payload:
+      type: object
+      description: Normalized thread payload — threadId, subject, messages[{from,to,date,body}]
+
+output_schema:
+  type: object
+  required: [candidates, extract_call_id]
+  properties:
+    extract_call_id: { type: string }
+    candidates:
+      type: array
+      items:
+        type: object
+        required: [title, tag]
+        properties:
+          title: { type: string }
+          subtitle: { type: [string, "null"] }
+          tag: { type: string, enum: [action, reply, commit, fyi] }
+          urgent: { type: boolean }
+          due_at: { type: [string, "null"] }
+          draft_confidence:
+            type: [string, "null"]
+            enum: [high, medium, low, skip, null]
+          sub_items:
+            type: array
+            items: { type: object, properties: { title: { type: string } } }
+          entities:
+            type: array
+            items:
+              type: object
+              required: [kind, label]
+              properties:
+                kind: { type: string, enum: [person, project, thread] }
+                label: { type: string }
+                ref: { type: string }
+
+prompts:
+  system: !file ./prompts/extract-gmail.system.md
+  user: !file ./prompts/extract-gmail.user.hbs
+
+response:
+  format: strict_json
+  extract: choose_first_object
+  retry_on_parse_error: 1
+
+observability:
+  trace: true
+  redact_fields: [payload.messages[].body]

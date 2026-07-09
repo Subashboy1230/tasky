@@ -1,0 +1,72 @@
+# RocketRide pipeline: extract.granola
+#
+# Turns a Granola meeting (transcript + summary + attendees) into
+# candidate action items owned by the user. Called from
+# lib/rocketride/client.ts::extract() with source: "granola".
+
+id: tasky-extract-granola
+name: Tasky · Extract · Granola
+description: >
+  Meeting-transcript action-item extractor. Prefers raw transcript over
+  the compressed summary because summaries collapse commitments.
+
+runtime:
+  provider: anthropic
+  model: claude-haiku-4-5
+  max_tokens: 2500
+  temperature: 0
+
+input_schema:
+  type: object
+  required: [source, userEmail, userId, payload]
+  properties:
+    source: { type: string, enum: [granola] }
+    userEmail: { type: string }
+    userId: { type: string }
+    payload:
+      type: object
+      description: >
+        Normalized Granola note. { meetingId, title, startedAt,
+        attendees[{name,email}], transcript, summary }
+
+output_schema:
+  type: object
+  required: [candidates, extract_call_id]
+  properties:
+    extract_call_id: { type: string }
+    candidates:
+      type: array
+      items:
+        type: object
+        required: [title, tag]
+        properties:
+          title: { type: string }
+          subtitle: { type: [string, "null"] }
+          tag: { type: string, enum: [action, reply, commit, fyi] }
+          urgent: { type: boolean }
+          due_at: { type: [string, "null"] }
+          sub_items:
+            type: array
+            items: { type: object, properties: { title: { type: string } } }
+          entities:
+            type: array
+            items:
+              type: object
+              required: [kind, label]
+              properties:
+                kind: { type: string, enum: [person, project, company] }
+                label: { type: string }
+                ref: { type: string }
+
+prompts:
+  system: !file ./prompts/extract-granola.system.md
+  user: !file ./prompts/extract-granola.user.hbs
+
+response:
+  format: strict_json
+  extract: choose_first_object
+  retry_on_parse_error: 1
+
+observability:
+  trace: true
+  redact_fields: [payload.transcript]

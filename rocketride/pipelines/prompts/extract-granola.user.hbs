@@ -1,0 +1,20 @@
+User email (whose commitments we care about): {{userEmail}}
+User id: {{userId}}
+
+--- MEETING ---
+Meeting ID: {{payload.meetingId}}
+Title: {{payload.title}}
+Started at: {{payload.startedAt}}
+
+Attendees:
+{{#each payload.attendees}}
+- {{this.name}} <{{this.email}}>
+{{/each}}
+
+--- TRANSCRIPT (source of truth) ---
+{{payload.transcript}}
+
+--- SUMMARY (context only; transcript wins on conflict) ---
+{{payload.summary}}
+
+Return the items JSON.

@@ -59,8 +59,21 @@ export interface ExtractOutput {
 }
 
 export async function extract(input: ExtractInput): Promise<ExtractOutput> {
-  const pipeline = process.env.ROCKETRIDE_PIPELINE_EXTRACT
-  if (!pipeline) throw new Error('Missing ROCKETRIDE_PIPELINE_EXTRACT env var.')
+  // Prefer source-specific pipeline ids (recommended, since gmail and
+  // granola have different prompts / schemas). Fall back to the single
+  // legacy env var if only one is set.
+  const pipeline =
+    (input.source === 'gmail'
+      ? process.env.ROCKETRIDE_PIPELINE_EXTRACT_GMAIL
+      : process.env.ROCKETRIDE_PIPELINE_EXTRACT_GRANOLA) ??
+    process.env.ROCKETRIDE_PIPELINE_EXTRACT
+  if (!pipeline) {
+    throw new Error(
+      `Missing RocketRide extract pipeline env var for source=${input.source}.` +
+      ' Set ROCKETRIDE_PIPELINE_EXTRACT_GMAIL / ROCKETRIDE_PIPELINE_EXTRACT_GRANOLA' +
+      ' (or the fallback ROCKETRIDE_PIPELINE_EXTRACT).',
+    )
+  }
   return invokePipeline<ExtractInput, ExtractOutput>(pipeline, input)
 }
 

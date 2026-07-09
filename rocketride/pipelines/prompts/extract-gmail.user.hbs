@@ -1,0 +1,19 @@
+User email (the person whose task list this becomes): {{userEmail}}
+User id: {{userId}}
+
+--- THREAD ---
+Thread ID: {{payload.threadId}}
+Subject: {{payload.subject}}
+
+Messages (oldest to newest):
+{{#each payload.messages}}
+─── message {{@index}} ───
+From: {{this.from}}
+To: {{this.to}}
+Date: {{this.date}}
+Body:
+{{this.body}}
+
+{{/each}}
+
+Return the items JSON.

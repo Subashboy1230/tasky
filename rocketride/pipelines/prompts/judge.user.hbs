@@ -1,0 +1,16 @@
+Source: {{source}}
+Batch label: {{batchLabel}}
+
+--- SOURCE MATERIAL ---
+{{sourceText}}
+
+--- EXTRACTOR CANDIDATES ---
+{{json candidates}}
+
+--- GRAPH CONTEXT (nearby OPEN tasks from Neo4j; use for merge + subtask targeting) ---
+{{json graphContext}}
+
+--- RECENTLY CLEARED TASKS (dropped, done, snoozed — never resurrect these) ---
+{{json clearedContext}}
+
+Return the decisions JSON. Exactly one decision per candidate.

@@ -1,0 +1,147 @@
+# RocketRide pipeline: judge
+#
+# The graph-aware second-pass reviewer. Runs after the extractor emits
+# candidate action items and BEFORE they land in Neo4j. Decides for each
+# candidate: keep, drop, merge into an existing task, or subtask.
+#
+# Called from lib/rocketride/client.ts::judge()
+#   process.env.ROCKETRIDE_PIPELINE_JUDGE must be the deployed pipeline id.
+#
+# Deploy:  rocketride deploy rocketride/pipelines/judge.pipeline.yaml
+# Redeploy after prompt edit:  rocketride deploy --force <pipeline_id>
+
+id: tasky-judge
+name: Tasky · Judge
+description: >
+  Graph-aware second-pass reviewer that decides whether extractor candidates
+  should be kept, dropped, merged, or nested as subtasks. Prime directive:
+  minimize top-level task count.
+
+runtime:
+  provider: anthropic
+  model: claude-haiku-4-5
+  max_tokens: 3000
+  temperature: 0
+
+# Input schema mirrors lib/rocketride/client.ts::JudgeInput
+input_schema:
+  type: object
+  required:
+    - source
+    - batchLabel
+    - sourceText
+    - candidates
+    - graphContext
+    - clearedContext
+    - userId
+  properties:
+    source:
+      type: string
+      enum: [gmail, granola]
+    batchLabel:
+      type: string
+    sourceText:
+      type: string
+      description: Truncated source thread or transcript text, max 4000 chars.
+    candidates:
+      type: array
+      items:
+        type: object
+        required: [idx, title, tag, urgent]
+        properties:
+          idx: { type: integer }
+          title: { type: string }
+          subtitle: { type: [string, "null"] }
+          tag:
+            type: [string, "null"]
+            enum: [action, reply, commit, fyi, null]
+          urgent: { type: boolean }
+          due_at: { type: [string, "null"] }
+          draft_confidence:
+            type: [string, "null"]
+            enum: [high, medium, low, skip, null]
+          sub_items:
+            type: array
+            items: { type: string }
+    graphContext:
+      type: array
+      items:
+        type: object
+        required: [id, title]
+        properties:
+          id: { type: string }
+          title: { type: string }
+          parent_context: { type: [string, "null"] }
+          graph_distance: { type: integer }
+          source: { type: string }
+    clearedContext:
+      type: array
+      items:
+        type: object
+        required: [id, title, status]
+        properties:
+          id: { type: string }
+          title: { type: string }
+          status: { type: string, enum: [done, dismissed, snoozed] }
+          cleared_at: { type: string }
+          source: { type: string }
+    userId:
+      type: string
+
+# Output schema mirrors JudgeOutput
+output_schema:
+  type: object
+  required: [decisions]
+  properties:
+    decisions:
+      type: array
+      items:
+        type: object
+        required: [idx, verdict, reason]
+        properties:
+          idx: { type: integer }
+          verdict:
+            type: string
+            enum: [keep, drop, merge, subtask]
+          reason: { type: string }
+          merge_target_id: { type: string }
+          subtask_target_id: { type: string }
+          parent_idx: { type: integer }
+          corrected_tag:
+            type: string
+            enum: [action, reply, commit, fyi]
+          corrected_urgent: { type: boolean }
+          corrected_draft_confidence:
+            type: string
+            enum: [high, medium, low, skip]
+
+# Prompts. Kept in sync with lib/prompts/judge.ts — if you edit one,
+# edit the other. `rocketride diff` will flag drift.
+prompts:
+  system: !file ./prompts/judge.system.md
+  user: !file ./prompts/judge.user.hbs
+
+# Post-process: strip any accidental prose or code fences and JSON.parse.
+# RocketRide's `strict_json` mode retries once if parse fails, then
+# surfaces the raw text on the second failure so the caller can fall back.
+response:
+  format: strict_json
+  extract: choose_first_object
+  retry_on_parse_error: 1
+
+# Auto-chunk when candidates.length > 20. Mirrors the local
+# JUDGE_CHUNK_SIZE fallback so Haiku 4.5 never sees a >20-candidate
+# batch (empirically the point where JSON output starts malforming).
+batching:
+  enabled: true
+  chunk_by: candidates
+  chunk_size: 20
+  reindex_idx: true
+  on_chunk_error: naive_keep
+
+# Log every call so /observability can pull them. RocketRide will fire
+# webhook events to $ROCKETRIDE_WEBHOOK_URL (set in dashboard) — we don't
+# need those yet; the run_id in the response is enough.
+observability:
+  trace: true
+  redact_fields: [candidates[].subtitle, sourceText]
