@@ -16,7 +16,7 @@ const NL_TO_CYPHER_SYSTEM = `You translate natural-language questions about a us
 The graph schema:
 
 Nodes:
-  (Person {email, name, is_user})
+  (Person {email, name, aliases: [string], is_user})
   (Task {id, title, subtitle, status, tag, due_at, urgent, first_seen_at, updated_at, source})
   (Thread {gmail_thread_id, subject, last_message_at})
   (Meeting {granola_meeting_id, title, date})
@@ -24,8 +24,8 @@ Nodes:
   (Function {id, name})
 
 Edges:
-  (Task)-[:OWNED_BY]->(Person)
-  (Task)-[:MENTIONS]->(Person)
+  (Task)-[:OWNED_BY]->(Person)   // ALWAYS points to the single user (is_user=true). Never use to filter by other names.
+  (Task)-[:MENTIONS]->(Person)   // The humans referenced INSIDE a task. Use for "tasks with X", "what does X owe", "waiting on X".
   (Task)-[:COMMITTED_IN]->(Thread|Meeting)
   (Task)-[:ABOUT]->(Project)
   (Task)-[:BLOCKS]->(Task)
@@ -34,6 +34,21 @@ Edges:
   (Task)-[:DUPLICATE_OF]->(Task)
   (Task)-[:TAGGED_WITH]->(Function)
   (Person)-[:PARTICIPATED_IN]->(Thread|Meeting)
+
+CRITICAL EDGE RULES (get these wrong and you'll return zero rows):
+- "Tasks with/for/from/waiting on <someone>" → Task-[:MENTIONS]->Person, NOT OWNED_BY.
+- "My tasks / what's on my plate" → Task-[:OWNED_BY]->Person WHERE Person.is_user = true.
+- The user owns every task. OWNED_BY is only useful to scope to "the user's tasks in general", never to filter by another person's name.
+
+NAME MATCHING RULES:
+- Never use \`p.name = 'Karim'\`. LLM extractors introduce spelling variance (Kartik vs Karthik, Karim vs Kareem).
+- ALWAYS match names case-insensitively and against BOTH the canonical name AND the aliases list:
+    WHERE toLower(p.name) CONTAINS toLower('<name>')
+       OR any(alias IN coalesce(p.aliases, []) WHERE toLower(alias) CONTAINS toLower('<name>'))
+- For Project.name, Meeting.title, Thread.subject — same treatment: \`toLower(x) CONTAINS toLower('<term>')\`.
+
+TOP-LEVEL vs NESTED:
+- Unless the user asks for subtasks, filter to top-level: \`AND NOT (t)-[:SUBTASK_OF]->(:Task)\`.
 
 Rules:
 - READ-ONLY. Never emit CREATE, MERGE, DELETE, SET, DETACH, REMOVE, CALL apoc.
@@ -59,7 +74,7 @@ export async function askTheGraph(args: {
 }): Promise<AskResult> {
   const response = await ai({
     prompt_id: 'ask.the.graph',
-    prompt_version: 1,
+    prompt_version: 2,
     system: NL_TO_CYPHER_SYSTEM,
     user: `Question: ${args.question}\n\nReturn the Cypher JSON.`,
     max_tokens: 800,
