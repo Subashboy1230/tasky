@@ -23,12 +23,13 @@ RETURN t.id AS id,
        t.title AS title,
        t.tag AS tag,
        t.source AS source,
+       t.updated_at AS updated_at,
        collect(DISTINCT p.name) AS projects,
        collect(DISTINCT m.title) AS meetings,
        collect(DISTINCT person.name) AS people,
        parent.title AS parent_of,
        owner.email AS owner_email
-ORDER BY t.updated_at DESC
+ORDER BY updated_at DESC
 LIMIT 25
 `
 
