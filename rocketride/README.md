@@ -1,5 +1,7 @@
 # RocketRide pipelines for tasky
 
+> **Status: aspirational.** These manifests are ready to deploy but no RocketRide account is currently wired. The shipping LLM path is Butterbase (see `lib/butterbase/client.ts`). When RocketRide access is sorted, drop these manifests into the dashboard, populate the env vars, and the client will take over. Until then, the sidebar Stack card intentionally does NOT list RocketRide — no dead links in the demo.
+
 Every LLM call in the tasky pipeline can be executed one of two ways:
 
 1. **RocketRide-hosted** (preferred for prod + evals) — pipelines live in `rocketride/pipelines/`, deployed to `cloud.rocketride.ai`, invoked via `POST /v1/pipelines/{id}/invoke`.

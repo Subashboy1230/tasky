@@ -65,10 +65,10 @@ export function Sidebar() {
           Stack
         </div>
         <div className="space-y-0.5 text-[11px] text-ink-muted">
-          <div>Butterbase · backend</div>
+          <div>Butterbase · LLM gateway</div>
           <div>Neo4j · graph</div>
-          <div>RocketRide · pipelines</div>
           <div>Composio · OAuth</div>
+          <div>Granola · meetings</div>
         </div>
       </div>
     </aside>

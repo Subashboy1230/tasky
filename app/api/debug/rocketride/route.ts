@@ -41,6 +41,27 @@ export async function POST() {
   const userId = 'health-check'
   const userEmail = process.env.APP_USER_EMAIL ?? 'you@example.com'
 
+  // If RocketRide isn't configured, report it as intentional up-front
+  // rather than firing four requests that will all throw. Aspirational
+  // by design — see lib/rocketride/client.ts header comment.
+  const anyConfigured =
+    !!process.env.ROCKETRIDE_API_URL &&
+    !!process.env.ROCKETRIDE_API_KEY &&
+    (!!process.env.ROCKETRIDE_PIPELINE_JUDGE ||
+      !!process.env.ROCKETRIDE_PIPELINE_EXTRACT_GMAIL ||
+      !!process.env.ROCKETRIDE_PIPELINE_EXTRACT_GRANOLA ||
+      !!process.env.ROCKETRIDE_PIPELINE_BRIEF)
+  if (!anyConfigured) {
+    return NextResponse.json({
+      ok: true,
+      status: 'not_configured',
+      message:
+        'RocketRide is aspirational — no ROCKETRIDE_* env vars set. ' +
+        'The judge is running on Butterbase locally. Wire ' +
+        'ROCKETRIDE_API_URL + ROCKETRIDE_API_KEY + pipeline ids when ready.',
+    })
+  }
+
   const judgeCheck = timed(() =>
     judge({
       source: 'gmail',

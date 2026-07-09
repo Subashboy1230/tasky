@@ -1,10 +1,15 @@
 // RocketRide client — invokes pipelines deployed to cloud.rocketride.ai.
 //
-// Every extract/judge/merge/brief pipeline is built locally in the
-// RocketRide VS Code extension, deployed to the cloud, and called from
-// this module. Never run pipelines locally in tasky itself.
+// STATUS: aspirational for now. The primary LLM path is Butterbase AI
+// Gateway (see lib/butterbase/client.ts). RocketRide is an optional
+// upgrade for hosted eval + prompt-version-control. If none of the
+// ROCKETRIDE_* env vars are set, the judge falls back to Butterbase
+// silently (see judge() below); extract() and brief() throw only when
+// callers explicitly opt in — no caller does today.
 //
-// Pipeline IDs come from env vars populated after `rocketride deploy`.
+// When RocketRide access is sorted, drop the pipeline manifests from
+// rocketride/pipelines/ into the account, populate the env vars, and
+// this client will take over.
 
 interface RocketRideConfig {
   url: string
