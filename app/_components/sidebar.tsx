@@ -11,6 +11,7 @@ import {
   Sparkles,
   Network,
   Share2,
+  Brain,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -19,6 +20,7 @@ const NAV = [
   { href: '/today', label: 'Today', icon: Inbox, match: (p: string) => p.startsWith('/today') },
   { href: '/network', label: 'Network', icon: Share2, match: (p: string) => p.startsWith('/network') },
   { href: '/graph', label: 'Ask the graph', icon: Network, match: (p: string) => p.startsWith('/graph') },
+  { href: '/brain', label: 'Brain', icon: Brain, match: (p: string) => p.startsWith('/brain') },
   { href: '/connections', label: 'Connections', icon: Plug, match: (p: string) => p.startsWith('/connections') },
   { href: '/activity', label: 'Activity', icon: Activity, match: (p: string) => p.startsWith('/activity') },
   { href: '/workflows', label: 'Workflows', icon: Sparkles, match: (p: string) => p.startsWith('/workflows') },
@@ -67,6 +69,7 @@ export function Sidebar() {
         <div className="space-y-0.5 text-[11px] text-ink-muted">
           <div>Butterbase · LLM gateway</div>
           <div>Neo4j · graph</div>
+          <div>Cognee · AI brain</div>
           <div>Composio · OAuth</div>
           <div>Granola · meetings</div>
         </div>
