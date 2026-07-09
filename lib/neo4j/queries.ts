@@ -190,6 +190,76 @@ RETURN t.id AS id,
 ORDER BY urgent DESC, due_at ASC, updated_at DESC
 `
 
+// ─── Post-judge cluster pass ─────────────────────────────────────
+//
+// For each Project (or Meeting) that has 3+ open top-level tasks
+// owned by the user, elect an anchor (highest-tag priority commit >
+// action > reply > fyi, then most recently seen) and demote the rest
+// to SUBTASK_OF that anchor. This is the graph doing the roll-up the
+// judge misses when related candidates land in different chunks.
+
+export const CLUSTER_PROJECT_TASKS = `
+MATCH (p:Project)<-[:ABOUT]-(t:Task {status: 'open'})
+WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+  AND NOT (t)-[:SUBTASK_OF]->(:Task)
+WITH p, collect(t) AS tasks
+WHERE size(tasks) >= 3
+
+// Rank each task by (tag priority desc, updated_at desc) so the anchor
+// is deterministic. commit > action > reply > fyi.
+UNWIND tasks AS t
+WITH p, tasks, t,
+     CASE t.tag
+       WHEN 'commit' THEN 4
+       WHEN 'action' THEN 3
+       WHEN 'reply' THEN 2
+       WHEN 'fyi'   THEN 1
+       ELSE 0
+     END AS priority
+ORDER BY priority DESC, t.updated_at DESC
+WITH p, tasks, collect(t) AS ordered_tasks
+WITH p, ordered_tasks[0] AS anchor, ordered_tasks[1..] AS children
+
+// Nest each non-anchor task under the anchor.
+UNWIND children AS child
+MERGE (child)-[:SUBTASK_OF]->(anchor)
+
+RETURN p.name AS project,
+       anchor.id AS anchor_id,
+       anchor.title AS anchor_title,
+       count(child) AS nested_count
+`
+
+export const CLUSTER_MEETING_TASKS = `
+MATCH (m:Meeting)<-[:COMMITTED_IN]-(t:Task {status: 'open'})
+WHERE (t)-[:OWNED_BY]->(:Person {email: $userEmail, is_user: true})
+  AND NOT (t)-[:SUBTASK_OF]->(:Task)
+  AND NOT (t)-[:ABOUT]->(:Project)     // don't double-nest if project cluster already handled it
+WITH m, collect(t) AS tasks
+WHERE size(tasks) >= 3
+
+UNWIND tasks AS t
+WITH m, tasks, t,
+     CASE t.tag
+       WHEN 'commit' THEN 4
+       WHEN 'action' THEN 3
+       WHEN 'reply' THEN 2
+       WHEN 'fyi'   THEN 1
+       ELSE 0
+     END AS priority
+ORDER BY priority DESC, t.updated_at DESC
+WITH m, tasks, collect(t) AS ordered_tasks
+WITH m, ordered_tasks[0] AS anchor, ordered_tasks[1..] AS children
+
+UNWIND children AS child
+MERGE (child)-[:SUBTASK_OF]->(anchor)
+
+RETURN m.title AS meeting,
+       anchor.id AS anchor_id,
+       anchor.title AS anchor_title,
+       count(child) AS nested_count
+`
+
 // ─── /network — people and projects the user has open work with ──
 
 export const NETWORK_PEOPLE = `

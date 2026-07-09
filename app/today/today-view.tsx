@@ -266,8 +266,13 @@ function buildGroups(tasks: TaskRow[], groupBy: GroupBy): Group[] {
     }
   }
 
-  // Sort by task_count desc, then urgent_count desc, tie-break by label.
+  // "Unattributed" / "No project" / "No meeting" buckets always sort to
+  // the bottom regardless of size — real named entities come first.
+  const UNATTRIBUTED_KEYS = new Set(['__unattributed', '__no_project', '__no_meeting'])
   return Array.from(map.values()).sort((a, b) => {
+    const aOrphan = UNATTRIBUTED_KEYS.has(a.key)
+    const bOrphan = UNATTRIBUTED_KEYS.has(b.key)
+    if (aOrphan !== bOrphan) return aOrphan ? 1 : -1
     if (b.tasks.length !== a.tasks.length) return b.tasks.length - a.tasks.length
     if (b.urgent_count !== a.urgent_count) return b.urgent_count - a.urgent_count
     return a.label.localeCompare(b.label)

@@ -21,7 +21,11 @@ import { judge } from '@/lib/rocketride/client'
 import { findNearbyTasksBatch, findRecentlyCleared } from '@/lib/graph/find-parent'
 import { mergeItemBatch } from '@/lib/graph/merge-item'
 import { runCypher } from '@/lib/neo4j/client'
-import { RECORD_RUN } from '@/lib/neo4j/queries'
+import {
+  RECORD_RUN,
+  CLUSTER_PROJECT_TASKS,
+  CLUSTER_MEETING_TASKS,
+} from '@/lib/neo4j/queries'
 import { randomUUID } from 'node:crypto'
 import type { ExtractedItem } from '@/lib/types'
 
@@ -197,6 +201,38 @@ export async function POST(req: NextRequest) {
     const summary = await mergeItemBatch({ userEmail, kept, subtasks })
     const dropped = decisions.length - summary.created - summary.nested
 
+    // ─── Phase 6: post-judge cluster pass ────────────────────────
+    // Nest same-project (and same-meeting) tasks under a single anchor
+    // so the flat /today list stays tight instead of showing 5 rows for
+    // one initiative. Idempotent — MERGE only creates missing edges.
+    let clustered_projects = 0
+    let clustered_meetings = 0
+    let extraNested = 0
+    try {
+      const projectClusters = await runCypher<{ nested_count: number }>(
+        CLUSTER_PROJECT_TASKS,
+        { userEmail },
+      )
+      clustered_projects = projectClusters.length
+      extraNested += projectClusters.reduce(
+        (s, r) => s + Number(r.nested_count ?? 0),
+        0,
+      )
+      const meetingClusters = await runCypher<{ nested_count: number }>(
+        CLUSTER_MEETING_TASKS,
+        { userEmail },
+      )
+      clustered_meetings = meetingClusters.length
+      extraNested += meetingClusters.reduce(
+        (s, r) => s + Number(r.nested_count ?? 0),
+        0,
+      )
+    } catch (err) {
+      console.warn('[/api/extract] cluster pass failed:', err)
+    }
+
+    const totalNested = summary.nested + extraNested
+
     await recordRun({
       runId,
       startedAt,
@@ -204,7 +240,7 @@ export async function POST(req: NextRequest) {
       status: 'ok',
       extracted: candidates.length,
       kept: summary.created,
-      nestedSubtasks: summary.nested,
+      nestedSubtasks: totalNested,
       dropped,
       graphContextUsed: graphContext.length,
       error: null,
@@ -215,13 +251,15 @@ export async function POST(req: NextRequest) {
       runId,
       extracted: candidates.length,
       kept: summary.created,
-      nested_subtasks: summary.nested,
+      nested_subtasks: totalNested,
       dropped_or_merged: dropped,
       graph_context_used: graphContext.length,
       judge_mode: judgeMode,
       synthesized_used,
       source_counts,
       source_errors,
+      clustered_projects,
+      clustered_meetings,
     })
   } catch (err) {
     console.error('[/api/extract] failed:', err)
