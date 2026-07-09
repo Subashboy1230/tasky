@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const userEmail = body.userEmail ?? process.env.APP_USER_EMAIL
     const userId = body.userId ?? 'default'
     sources = body.sources ?? ['gmail', 'granola']
-    const days = body.days ?? 7
+    const days = body.days ?? 30
 
     if (!userEmail) {
       return NextResponse.json({ error: 'userEmail required' }, { status: 400 })

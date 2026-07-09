@@ -18,13 +18,26 @@ Schema:
   "items": [
     {
       "title": "string. The action item, in imperative form ('Send X', 'Review Y')",
+      "subtitle": "string. Optional. One sentence of context.",
       "tag": "action" | "reply" | "commit" | "fyi",
       "due_at": "ISO 8601 date or datetime, or null",
       "urgent": true | false,
-      "sub_items": [ { "title": "string" } ]
+      "sub_items": [ { "title": "string" } ],
+      "entities": [
+        { "kind": "person" | "project" | "company", "label": "Display Name", "ref": "optional email or slug" }
+      ]
     }
   ]
 }
+
+ENTITIES (very important — the graph depends on this):
+- Emit an "entities" array for each item. This is what powers the graph — every entity becomes a node linked to this task via MENTIONS or ABOUT.
+- Include:
+  * Every PERSON specifically named in connection with this task ("Send doc to Anna" → entity Anna, kind=person). Use canonical first + last names ("Anna Choi", not just "Anna").
+  * Every PROJECT / PRODUCT / INITIATIVE / COMPANY / DEAL / CUSTOMER referenced ("Nummo partnership meeting" → entity Nummo, kind=company; "Q3 OKRs" → entity Q3 planning, kind=project; "Arkansas HIT vendor" → entity Arkansas HIT, kind=project).
+  * Emit an entity even if the same string is already in the title — the graph uses these edges.
+- Skip generic words ("meeting", "team", "call"). Skip attendees who are not part of the specific task.
+- For ref, prefer email for people (from the attendee list in the user message). Slug otherwise (lowercase-dashed).
 
 ${WORK_ONLY_RULE}
 

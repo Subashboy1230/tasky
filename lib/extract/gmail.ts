@@ -144,7 +144,7 @@ export async function extractGmailThreads(args: {
   const threads = await listGmailThreadsWithMessages({
     userId: args.userId,
     days: args.days,
-    maxResults: args.maxThreads ?? 20,
+    maxResults: args.maxThreads ?? 40,
   })
   console.log(`[extract/gmail] fetched ${threads.length} threads`)
 

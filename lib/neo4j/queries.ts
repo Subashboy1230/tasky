@@ -106,10 +106,11 @@ FOREACH (_ IN CASE WHEN $meetingId IS NOT NULL THEN [1] ELSE [] END |
   MERGE (t)-[:COMMITTED_IN]->(m)
 )
 
-// Optional project
+// Projects (multiple per task). FOREACH tolerates an empty list;
+// UNWIND on empty would drop the variable and kill the query.
 WITH t
-FOREACH (_ IN CASE WHEN $projectName IS NOT NULL THEN [1] ELSE [] END |
-  MERGE (proj:Project {name: $projectName})
+FOREACH (projName IN $projects |
+  MERGE (proj:Project {name: projName})
   MERGE (t)-[:ABOUT]->(proj)
 )
 

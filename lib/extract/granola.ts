@@ -40,10 +40,16 @@ interface GranolaNote {
 
 interface RawItem {
   title: string
+  subtitle?: string | null
   tag: 'action' | 'reply' | 'commit' | 'fyi'
   due_at: string | null
   urgent: boolean
   sub_items?: Array<{ title: string }>
+  entities?: Array<{
+    kind: 'person' | 'project' | 'company'
+    label: string
+    ref?: string
+  }>
 }
 
 export const lastExtractGranolaErrors: string[] = []
@@ -118,29 +124,50 @@ async function extractOneNote(args: {
 
   const parsed = JSON.parse(extractJsonObject(resp.text)) as { items?: RawItem[] }
   const items = parsed?.items ?? []
-  // Build entity list from attendees so the graph gets Person nodes.
-  const attendeeEntities = (note.attendees ?? [])
-    .filter(a => a.email && a.email !== userEmail)
-    .slice(0, 5)
-    .map(a => ({
-      kind: 'person' as const,
-      label: a.name ?? a.email!,
-      ref: a.email!,
-    }))
 
-  return items.map<ExtractedItem>(item => ({
-    source: 'granola',
-    source_ref: { granola_meeting_id: note.id },
-    parent_context: title,
-    title: item.title,
-    subtitle: null,
-    entities: attendeeEntities,
-    tag: item.tag,
-    due_at: item.due_at,
-    urgent: !!item.urgent,
-    sub_items: item.sub_items,
-    _llm_call_id: resp.call_id,
-  }))
+  // Build a per-item entity list: the LLM's entities take priority (they
+  // are the ones this item is actually about), and if a person's email is
+  // omitted the extractor tries to resolve it from the meeting attendees.
+  const attendeesByName = new Map<string, string>()
+  for (const a of note.attendees ?? []) {
+    if (!a.email) continue
+    if (a.name) attendeesByName.set(a.name.trim().toLowerCase(), a.email)
+    attendeesByName.set(a.email.trim().toLowerCase(), a.email)
+  }
+
+  const normalizeEntity = (e: RawItem['entities'] extends (infer U)[] | undefined ? U : never) => {
+    // Map company → project so the graph rolls up cleanly.
+    const kind = (e.kind === 'company' ? 'project' : e.kind) as 'person' | 'project'
+    let ref = e.ref ?? undefined
+    if (kind === 'person' && !ref) {
+      ref = attendeesByName.get((e.label ?? '').trim().toLowerCase())
+    }
+    if (!ref && kind === 'person') {
+      ref = `${e.label.toLowerCase().replace(/[^a-z]/g, '.')}@unknown`
+    }
+    return { kind, label: e.label, ref }
+  }
+
+  return items.map<ExtractedItem>(item => {
+    const llmEntities = (item.entities ?? [])
+      .filter(e => e && e.label && (e.kind === 'person' || e.kind === 'project' || e.kind === 'company'))
+      .map(normalizeEntity)
+      // Never mention the user themselves.
+      .filter(e => !(e.kind === 'person' && e.ref === userEmail))
+    return {
+      source: 'granola',
+      source_ref: { granola_meeting_id: note.id },
+      parent_context: title,
+      title: item.title,
+      subtitle: item.subtitle ?? null,
+      entities: llmEntities,
+      tag: item.tag,
+      due_at: item.due_at,
+      urgent: !!item.urgent,
+      sub_items: item.sub_items,
+      _llm_call_id: resp.call_id,
+    }
+  })
 }
 
 export async function extractGranolaMeetings(args: {
@@ -157,7 +184,7 @@ export async function extractGranolaMeetings(args: {
   // Page through notes.
   const noteRefs: GranolaNoteRef[] = []
   let cursor: string | null = null
-  const cap = args.maxMeetings ?? 15
+  const cap = args.maxMeetings ?? 40
   do {
     const params = new URLSearchParams()
     params.set('created_after', since)

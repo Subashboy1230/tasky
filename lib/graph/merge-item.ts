@@ -61,8 +61,14 @@ export async function mergeItem(args: MergeItemArgs): Promise<MergeItemResult> {
       name: e.label,
     }))
 
-  const projectEntity = (candidate.entities ?? []).find(e => e.kind === 'project')
-  const projectName = projectEntity?.label ?? null
+  // All project entities (dedup by label, skip empties).
+  const projectSet = new Set<string>()
+  for (const e of candidate.entities ?? []) {
+    if (e.kind !== 'project') continue
+    const label = e.label?.trim()
+    if (label) projectSet.add(label)
+  }
+  const projects = Array.from(projectSet)
 
   const threadId = candidate.source_ref?.gmail_thread_id ?? null
   const meetingId = candidate.source_ref?.granola_meeting_id ?? null
@@ -84,7 +90,7 @@ export async function mergeItem(args: MergeItemArgs): Promise<MergeItemResult> {
     threadSubject: threadId ? candidate.parent_context : null,
     meetingId,
     meetingTitle: meetingId ? candidate.parent_context : null,
-    projectName,
+    projects,
     parentTaskId: parentTaskId ?? null,
   }
 
