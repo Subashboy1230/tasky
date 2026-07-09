@@ -89,14 +89,11 @@ export interface JudgeOutput {
   judge_call_id: string
 }
 
-export async function judge(input: JudgeInput): Promise<JudgeOutput> {
-  const pipeline = process.env.ROCKETRIDE_PIPELINE_JUDGE
-  if (pipeline) {
-    return invokePipeline<JudgeInput, JudgeOutput>(pipeline, input)
-  }
-  // Local fallback — same prompt, same model, called directly through
-  // Butterbase AI Gateway. Lets the judge work today without waiting on
-  // a RocketRide VS Code deploy. Same output contract as the pipeline.
+/**
+ * Judge one flat chunk. Local idx runs 0..N-1 within this chunk; the
+ * chunked judge below re-offsets those to global idx for the caller.
+ */
+async function judgeOneChunk(input: JudgeInput): Promise<JudgeOutput> {
   const { ai } = await import('../butterbase/client')
   const {
     JUDGE_SYSTEM_PROMPT,
@@ -127,6 +124,70 @@ export async function judge(input: JudgeInput): Promise<JudgeOutput> {
     decisions: parsed?.decisions ?? [],
     judge_call_id: resp.call_id,
   }
+}
+
+const JUDGE_CHUNK_SIZE = 20
+
+export async function judge(input: JudgeInput): Promise<JudgeOutput> {
+  // Prefer the deployed RocketRide judge when configured.
+  const pipeline = process.env.ROCKETRIDE_PIPELINE_JUDGE
+  if (pipeline) {
+    return invokePipeline<JudgeInput, JudgeOutput>(pipeline, input)
+  }
+
+  const total = input.candidates.length
+  if (total <= JUDGE_CHUNK_SIZE) {
+    return judgeOneChunk(input)
+  }
+
+  // Chunked path: Haiku 4.5 tends to malform the JSON output when the
+  // full batch is >~40 candidates. Splitting into windows of 20 keeps
+  // each output well under the safe token count and lets a single bad
+  // chunk fail gracefully instead of dropping every decision.
+  const decisions: JudgeOutput['decisions'] = []
+  let lastCallId = ''
+  let chunkErrors = 0
+
+  for (let start = 0; start < total; start += JUDGE_CHUNK_SIZE) {
+    const end = Math.min(start + JUDGE_CHUNK_SIZE, total)
+    const chunkCandidates = input.candidates
+      .slice(start, end)
+      .map((c, i) => ({ ...c, idx: i }))
+
+    try {
+      const chunkOutput = await judgeOneChunk({
+        ...input,
+        batchLabel: `${input.batchLabel} · chunk ${Math.floor(start / JUDGE_CHUNK_SIZE) + 1}`,
+        candidates: chunkCandidates,
+      })
+
+      for (const decision of chunkOutput.decisions) {
+        const shifted = { ...decision, idx: decision.idx + start }
+        if (typeof shifted.parent_idx === 'number') {
+          shifted.parent_idx = shifted.parent_idx + start
+        }
+        decisions.push(shifted)
+      }
+      lastCallId = chunkOutput.judge_call_id
+    } catch (err) {
+      chunkErrors++
+      console.warn(
+        `[judge] chunk ${start}..${end - 1} failed, keeping all candidates in that range:`,
+        err instanceof Error ? err.message : String(err),
+      )
+      // Naive-keep for this chunk so we still land the tasks. Global idx
+      // is start..end-1.
+      for (let i = start; i < end; i++) {
+        decisions.push({ idx: i, verdict: 'keep', reason: 'chunk_judge_failed' })
+      }
+    }
+  }
+
+  if (chunkErrors > 0) {
+    console.log(`[judge] ${chunkErrors} of ${Math.ceil(total / JUDGE_CHUNK_SIZE)} chunks fell back to naive`)
+  }
+
+  return { decisions, judge_call_id: lastCallId }
 }
 
 export interface GraphMergeInput {

@@ -267,8 +267,13 @@ export async function listGmailThreadsWithMessages(args: {
     console.warn('[composio/gmail] connectedAccounts.list failed:', err)
   }
 
+  // Only fetch from accounts whose status is definitively ACTIVE.
+  // Composio can report INITIALIZING (partial OAuth), EXPIRED (token
+  // died), DROPPED (revoked in Google), INACTIVE (paused) — those all
+  // error out on tools.execute, so we skip them and only iterate over
+  // the healthy ones.
   const activeAccounts = accounts.filter(
-    a => (a.status ?? '').toLowerCase() !== 'inactive',
+    a => (a.status ?? '').toUpperCase() === 'ACTIVE',
   )
 
   if (activeAccounts.length === 0) {
