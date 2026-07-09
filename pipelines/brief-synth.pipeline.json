@@ -1,0 +1,56 @@
+{
+  "$schema": "https://cloud.rocketride.ai/schemas/pipeline.v1.json",
+  "name": "tasky.brief-synth",
+  "description": "Generate a Why/Know/Done/Next brief for a Task, or a full meeting prep brief for a Meeting. Reads a subgraph from Neo4j (MEETING_SUBGRAPH or single-task neighborhood) and synthesizes via Butterbase AI Gateway (Opus 4.7).",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "taskId": { "type": "string" },
+      "meetingId": { "type": "string" },
+      "subgraph": { "type": "object" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "why": { "type": "string" },
+      "know": { "type": "array", "items": { "type": "string" } },
+      "done": { "type": "string" },
+      "next": { "type": "string" },
+      "talking_points": { "type": "array", "items": { "type": "string" } }
+    }
+  },
+  "nodes": [
+    {
+      "id": "pull_subgraph",
+      "type": "neo4j_read",
+      "description": "If meetingId is set, run MEETING_SUBGRAPH. If taskId is set, run a task-neighborhood query pulling the 1-hop network around the task. Emit the subgraph as structured JSON."
+    },
+    {
+      "id": "build_prompt",
+      "type": "transform",
+      "description": "Assemble the user prompt via lib/prompts/brief.ts or lib/prompts/meeting-prep.ts, feeding the subgraph JSON as context."
+    },
+    {
+      "id": "brief_llm",
+      "type": "butterbase_ai",
+      "config": {
+        "model": "claude-opus-4-7",
+        "system_prompt_source": "lib/prompts/brief.ts:BRIEF_SYSTEM_PROMPT OR lib/prompts/meeting-prep.ts:MEETING_PREP_SYSTEM_PROMPT",
+        "max_tokens": 1024,
+        "prompt_id": "brief",
+        "prompt_version": 1
+      }
+    },
+    {
+      "id": "parse_json",
+      "type": "transform",
+      "description": "Parse the strict-JSON brief and validate the shape."
+    }
+  ],
+  "edges": [
+    { "from": "pull_subgraph", "to": "build_prompt" },
+    { "from": "build_prompt", "to": "brief_llm" },
+    { "from": "brief_llm", "to": "parse_json" }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://cloud.rocketride.ai/schemas/pipeline.v1.json",
+  "name": "tasky.extract",
+  "description": "Read a Gmail thread OR Granola meeting payload, extract candidate action items via Butterbase AI Gateway (Opus 4.7). Emits a list of ExtractedItem structures for the judge pipeline.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "source": { "type": "string", "enum": ["gmail", "granola"] },
+      "userEmail": { "type": "string" },
+      "userId": { "type": "string" },
+      "payload": { "type": "object" }
+    },
+    "required": ["source", "userEmail", "payload"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "candidates": { "type": "array" },
+      "extract_call_id": { "type": "string" }
+    }
+  },
+  "nodes": [
+    {
+      "id": "prepare_input",
+      "type": "transform",
+      "description": "Depending on source, assemble the transcript/summary string, sender info, attendee list, etc. so the extractor prompt has clean structured input."
+    },
+    {
+      "id": "extractor_llm",
+      "type": "butterbase_ai",
+      "config": {
+        "model": "claude-opus-4-7",
+        "system_prompt_source": "lib/prompts/extract-gmail.ts OR lib/prompts/extract-granola.ts (select by source)",
+        "max_tokens": 2048,
+        "prompt_id": "extract.{source}",
+        "prompt_version": 1
+      }
+    },
+    {
+      "id": "parse_json",
+      "type": "transform",
+      "description": "Parse the LLM's strict-JSON response. Attach source_ref (gmail_thread_id or granola_meeting_id) to each candidate. Tag each item with _llm_call_id from the ai node's response for later trace joins."
+    }
+  ],
+  "edges": [
+    { "from": "prepare_input", "to": "extractor_llm" },
+    { "from": "extractor_llm", "to": "parse_json" }
+  ]
+}

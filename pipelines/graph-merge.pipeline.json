@@ -1,0 +1,45 @@
+{
+  "$schema": "https://cloud.rocketride.ai/schemas/pipeline.v1.json",
+  "name": "tasky.graph-merge",
+  "description": "Apply the Judge's decisions to Neo4j. Handles Task node upserts, OWNED_BY / MENTIONS / COMMITTED_IN / ABOUT / SUBTASK_OF edges. All writes happen through the UPSERT_TASK Cypher query in lib/neo4j/queries.ts.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "userEmail": { "type": "string" },
+      "userId": { "type": "string" },
+      "keptCandidates": { "type": "array" },
+      "merges": { "type": "array" },
+      "subtasks": { "type": "array" }
+    },
+    "required": ["userEmail", "keptCandidates"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "created_task_ids": { "type": "array" },
+      "merged_count": { "type": "integer" },
+      "subtask_count": { "type": "integer" }
+    }
+  },
+  "nodes": [
+    {
+      "id": "write_kept",
+      "type": "neo4j_write",
+      "description": "For each kept candidate, run UPSERT_TASK. Collect resulting task ids."
+    },
+    {
+      "id": "write_subtasks",
+      "type": "neo4j_write",
+      "description": "For each subtask candidate, run UPSERT_TASK with parentTaskId set. Creates the SUBTASK_OF edge to the target parent."
+    },
+    {
+      "id": "annotate_merges",
+      "type": "neo4j_write",
+      "description": "For each merge, do NOT create a new node. Instead, update the target task: bump updated_at, append the source_ref to a merged_from array, refresh subtitle if the candidate's is richer."
+    }
+  ],
+  "edges": [
+    { "from": "write_kept", "to": "write_subtasks" },
+    { "from": "write_subtasks", "to": "annotate_merges" }
+  ]
+}

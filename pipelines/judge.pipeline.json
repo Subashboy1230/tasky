@@ -1,0 +1,52 @@
+{
+  "$schema": "https://cloud.rocketride.ai/schemas/pipeline.v1.json",
+  "name": "tasky.judge",
+  "description": "Second-pass reviewer over extracted candidates. Runs the Judge (Opus 4.7 via Butterbase AI Gateway) with graph context from Neo4j + cleared-tasks list. Emits one verdict per candidate: keep / drop / merge / subtask.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "source": { "type": "string" },
+      "batchLabel": { "type": "string" },
+      "sourceText": { "type": "string" },
+      "candidates": { "type": "array" },
+      "graphContext": { "type": "array" },
+      "clearedContext": { "type": "array" },
+      "userId": { "type": "string" }
+    },
+    "required": ["candidates", "graphContext"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "decisions": { "type": "array" },
+      "judge_call_id": { "type": "string" }
+    }
+  },
+  "nodes": [
+    {
+      "id": "build_prompt",
+      "type": "transform",
+      "description": "Assemble the user prompt via lib/prompts/judge.ts:buildJudgeUserPrompt — concatenates source material + candidates + graph context + cleared list."
+    },
+    {
+      "id": "judge_llm",
+      "type": "butterbase_ai",
+      "config": {
+        "model": "claude-opus-4-7",
+        "system_prompt_source": "lib/prompts/judge.ts:JUDGE_SYSTEM_PROMPT",
+        "max_tokens": 2048,
+        "prompt_id": "judge",
+        "prompt_version": 1
+      }
+    },
+    {
+      "id": "validate_decisions",
+      "type": "transform",
+      "description": "Ensure every candidate idx has a decision. Validate merge_target_id and subtask_target_id against the graphContext ids. On any validation failure, fall back to verdict=keep for that candidate — safe default that keeps the surface working."
+    }
+  ],
+  "edges": [
+    { "from": "build_prompt", "to": "judge_llm" },
+    { "from": "judge_llm", "to": "validate_decisions" }
+  ]
+}
