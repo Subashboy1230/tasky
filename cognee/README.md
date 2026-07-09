@@ -46,9 +46,15 @@ Prereqs:
 
 - Docker + docker compose
 - `.env.local` at the repo root with `NEO4J_URI`, `NEO4J_USER`,
-  `NEO4J_PASSWORD` (already required for tasky itself)
-- An LLM API key — either `OPENAI_API_KEY` (Cognee's default) or
-  `LLM_PROVIDER=anthropic` + `LLM_API_KEY=<your key>`
+  `NEO4J_PASSWORD` (already required for tasky itself) AND
+  `BUTTERBASE_URL`, `BUTTERBASE_API_KEY` (also already required)
+
+**You do NOT need an OpenAI key.** `docker-compose.yml` is configured
+out of the box to route Cognee's LLM calls through Butterbase
+(OpenAI-compatible) and run embeddings locally on CPU via `fastembed`
+(no API key, no external service). If you'd rather use OpenAI direct,
+delete the `LLM_*` and `EMBEDDING_*` overrides in `docker-compose.yml`
+and add `OPENAI_API_KEY=sk-...` to `.env.local`.
 
 Start:
 

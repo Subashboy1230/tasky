@@ -2,3 +2,6 @@ cognee==0.1.35
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
+# Local CPU embeddings — used when EMBEDDING_PROVIDER=fastembed.
+# Pinned to a small model (~90MB) so the container stays lean.
+fastembed==0.4.2

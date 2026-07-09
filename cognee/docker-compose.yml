@@ -1,8 +1,10 @@
 # Run: cd cognee && docker compose up -d
 #
-# Reads env from ../.env.local so the sidecar shares tasky's Neo4j
-# credentials + OpenAI key. Cognee's OPENAI_API_KEY is used for both
-# extraction and embedding by default.
+# Zero-OpenAI config. This compose file is set up to run entirely on
+# services you already have: Butterbase (LLM, OpenAI-compatible), your
+# existing Neo4j Aura (graph), and fastembed (local CPU embeddings, no
+# API key). If you'd rather use OpenAI directly, delete the LLM_*
+# overrides below and just set OPENAI_API_KEY in ../.env.local.
 
 services:
   cognee:
@@ -13,17 +15,31 @@ services:
     env_file:
       - ../.env.local
     environment:
-      # Point Cognee's graph provider at tasky's Neo4j Aura instance.
-      # This is the win — both stores share one graph substrate.
+      # ─── Graph — share tasky's Neo4j ──────────────────────
       GRAPH_DATABASE_PROVIDER: neo4j
       GRAPH_DATABASE_URL: ${NEO4J_URI}
       GRAPH_DATABASE_USERNAME: ${NEO4J_USER}
       GRAPH_DATABASE_PASSWORD: ${NEO4J_PASSWORD}
-      # Vector store — LanceDB is embedded (no extra service to run).
+
+      # ─── LLM — route through Butterbase (OpenAI-compatible) ─
+      # Cognee uses litellm under the hood; `openai_compat` provider
+      # accepts any endpoint that speaks /v1/chat/completions. Point it
+      # at Butterbase and reuse credits you already have.
+      LLM_PROVIDER: openai
+      LLM_ENDPOINT: ${BUTTERBASE_URL}/v1
+      LLM_API_KEY: ${BUTTERBASE_API_KEY}
+      LLM_MODEL: ${BUTTERBASE_LLM_MODEL:-anthropic/claude-haiku-4.5}
+
+      # ─── Embeddings — fastembed (local, no API key) ────────
+      # fastembed runs a small ONNX model on CPU inside the container.
+      # ~90MB download on first boot, then it's totally offline.
+      EMBEDDING_PROVIDER: fastembed
+      EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      EMBEDDING_DIMENSIONS: 384
+
+      # ─── Vector store — LanceDB (embedded, no extra service) ─
       VECTOR_DB_PROVIDER: lancedb
-      # LLM — Cognee's default is OpenAI. Add OPENAI_API_KEY to
-      # .env.local. If you don't have one, set LLM_PROVIDER=anthropic
-      # + LLM_API_KEY=$ANTHROPIC_API_KEY instead.
+
     volumes:
       # Persist Cognee's local state (chunks, embeddings, config) across
       # container restarts.
